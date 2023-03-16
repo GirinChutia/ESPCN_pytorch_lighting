@@ -1,9 +1,9 @@
+import pytorch_lightning as pl
 import torch.utils.data as data
 import os
-from torchvision.transforms import Compose, CenterCrop, ToTensor, Resize
+from torchvision.transforms import Compose, CenterCrop, ToTensor, Resize, InterpolationMode
 from torch.utils.data import DataLoader
 from PIL import Image
-import pytorch_lightning as pl
 
 class DatasetFromFolder(data.Dataset):
     def __init__(self, image_dir, input_transform=None, target_transform=None):
@@ -36,9 +36,8 @@ class DatasetFromFolder(data.Dataset):
         return any(filename.endswith(extension) for extension in [".png", ".jpg", ".jpeg"])
 
 class BDS500DataModule(pl.LightningDataModule):
-    
     def __init__(self,image_dir,
-                 upscale_factor=2,
+                 upscale_factor=3,
                  batch_size=64,
                  num_workers=4):
         
@@ -79,7 +78,7 @@ class BDS500DataModule(pl.LightningDataModule):
     def input_transform(crop_size, upscale_factor):
         return Compose([
             CenterCrop(crop_size),
-            Resize(crop_size // upscale_factor),
+            Resize(crop_size // upscale_factor,interpolation=InterpolationMode.BICUBIC),
             ToTensor(),
         ])
 
