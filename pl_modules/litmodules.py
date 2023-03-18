@@ -4,7 +4,7 @@ import torch.nn.init as init
 from math import log10
 import torch.optim as optim
 import torch
-from .model import ESPCN_model
+from .model import ESPCN_model, init_weights
 
 class ESPCNLitModule(pl.LightningModule):
     
@@ -15,6 +15,7 @@ class ESPCNLitModule(pl.LightningModule):
         self.lr = lr
         self.ESPCN_model = ESPCN_model(scale=self.upscale_factor,
                                        channels=channels)
+        self.ESPCN_model.apply(init_weights)
     def forward(self, x):
         x = self.ESPCN_model(x)
         return x
