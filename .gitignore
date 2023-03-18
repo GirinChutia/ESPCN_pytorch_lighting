@@ -1,3 +1,7 @@
 __pycache__/
 mlruns/
 430606516796915818/
+/test.ipynb
+pl_checkpoints/
+logs/
+/Dataset.ipynb

@@ -2,10 +2,12 @@ import pytorch_lightning as pl
 from pytorch_lightning.loggers import MLFlowLogger
 from pytorch_lightning.loggers import CSVLogger
 from pytorch_lightning.callbacks import ModelCheckpoint
-from datamodules import BDS500DataModule
-from modelmodules import SRNet
 from dataclasses import dataclass
 from simple_parsing import ArgumentParser
+from pl_modules.litmodules import ESPCNLitModule
+from pl_modules.datamodules import BDSDataModule
+import time,os
+timestr = time.strftime("%Y-%m-%d_%H-%M-%S")
 
 @dataclass
 class TrainingConfig:
@@ -27,6 +29,7 @@ class TrainingConfig:
 class ModelHyperParameters:
     batch_size: int = 64
     learning_rate: float = 0.01
+    normalize_input: bool = True
 
 if __name__ == "__main__":
     
@@ -40,36 +43,53 @@ if __name__ == "__main__":
     
     batch_size = hparams.batch_size
     learning_rate = hparams.learning_rate
+    normalize_input = hparams.normalize_input
     
     upscale_factor = train_config.upscale_factor
     epoch = train_config.epoch
     num_workers = train_config.num_workers
-    default_root_dir=train_config.checkpoint_dir
+    default_root_dir = os.path.join(train_config.checkpoint_dir,timestr)
     data_dir=train_config.data_dir
     
-    bsd_dm = BDS500DataModule(image_dir=data_dir,
-                              upscale_factor=upscale_factor,
-                              batch_size=batch_size,
-                              num_workers = num_workers)
+    # RGB -----------
+    # means = [0.4491, 0.4482, 0.3698]
+    # stds = [0.2422, 0.2272, 0.2335]
     
-    model = SRNet(upscale_factor=upscale_factor,
-                  lr=learning_rate)
+    # Y Channels only -----
+    means = 0.4412
+    stds = 0.2194
+
+    bsd_dm = BDSDataModule(image_dir=data_dir,
+                           upscale_factor=upscale_factor,
+                           batch_size=batch_size,
+                           num_workers = num_workers,
+                           crop_size=256,
+                           normalize=normalize_input,
+                           means=means,
+                           stds=stds)
+    
+    model = ESPCNLitModule(upscale_factor=upscale_factor,
+                           lr=learning_rate,
+                           channels=1)
     
     checkpoint_callback = ModelCheckpoint(monitor='val_psnr',
                                           mode='max',
                                           save_last=True,
-                                          verbose=True,
+                                          verbose=False,
                                           dirpath=default_root_dir,
                                           filename='best-model-{epoch:02d}-{val_psnr:.2f}')
     
-    csvlogger = CSVLogger(train_config.log_dir, name="csvlogs")
+    csv_log_dir = os.path.join(train_config.log_dir,timestr)
+    csvlogger = CSVLogger(csv_log_dir, name="csvlogs")
     mlf_logger = MLFlowLogger(experiment_name=train_config.mlflow_experiment_name,
                               run_name=train_config.mlflow_run_name,
                               tracking_uri=train_config.mlflow_log_dir)
     
     mlf_logger.log_hyperparams(vars(hparams))
     mlf_logger.log_hyperparams(vars(train_config))
+    mlf_logger.log_hyperparams({'csv_log_dir':csv_log_dir,'checkpoint_log_dir':default_root_dir})
     csvlogger.log_hyperparams(args)
+    csvlogger.log_hyperparams({'csv_log_dir':csv_log_dir,'checkpoint_log_dir':default_root_dir})
     
     trainer = pl.Trainer(accelerator=train_config.device,
                          devices=1,

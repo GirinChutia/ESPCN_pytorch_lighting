@@ -3,35 +3,25 @@ import torch.nn as nn
 import torch.nn.init as init
 from math import log10
 import torch.optim as optim
+import torch
+from .model import ESPCN_model
 
-class SRNet(pl.LightningModule):
-    def __init__(self, upscale_factor,lr=0.01):
+class ESPCNLitModule(pl.LightningModule):
+    
+    def __init__(self, upscale_factor=3,lr=0.01,channels=1):
         super().__init__()
-        self.relu = nn.ReLU()
-        self.tanh = nn.Tanh()
-        self.conv1 = nn.Conv2d(1, 64, (5, 5), (1, 1), (2, 2))
-        self.conv2 = nn.Conv2d(64, 32, (3, 3), (1, 1), (1, 1))
-        self.conv3 = nn.Conv2d(32, upscale_factor ** 2, (3, 3), (1, 1), (1, 1))
-        self.pixel_shuffle = nn.PixelShuffle(upscale_factor)
-        
-        self._initialize_weights()
         self.criterion = nn.MSELoss()
+        self.upscale_factor = upscale_factor
         self.lr = lr
-
+        self.ESPCN_model = ESPCN_model(scale=self.upscale_factor,
+                                       channels=channels)
     def forward(self, x):
-        x = self.tanh(self.conv1(x))
-        x = self.tanh(self.conv2(x))
-        x = self.pixel_shuffle(self.conv3(x))
+        x = self.ESPCN_model(x)
         return x
-
-    def _initialize_weights(self):
-        init.orthogonal_(self.conv1.weight, init.calculate_gain('tanh'))
-        init.orthogonal_(self.conv2.weight, init.calculate_gain('tanh'))
-        init.orthogonal_(self.conv3.weight, init.calculate_gain('tanh'))
         
     def training_step(self, batch, batch_idx):
         input, target = batch
-        y_hat = self(input)    
+        y_hat = self(input) 
         loss = self.criterion(y_hat, target)
         psnr = 10 * log10(1 / loss.item())
         self.log("train_loss", loss, on_step=True, on_epoch=True, prog_bar=True, logger=True)
@@ -48,4 +38,10 @@ class SRNet(pl.LightningModule):
         return {'val_loss':loss,'val_psnr':loss} 
     
     def configure_optimizers(self):
-        return optim.Adam(self.parameters(), lr=self.lr)
+        optimizer = optim.Adam(self.parameters(), lr=self.lr)
+        lr_scheduler = {'scheduler' : torch.optim.lr_scheduler.MultiStepLR(optimizer,
+                                                                           milestones=[35,80],
+                                                                           gamma=0.1,
+                                                                           verbose=True),
+                        'name': 'MultiSetLR_Scheduler'}
+        return [optimizer], [lr_scheduler]
